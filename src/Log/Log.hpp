@@ -277,7 +277,7 @@ namespace LYW_CODE
                             fwrite ( "[DEFAULT]",9,1,m_handle);
                     }
                     //Set Log Time PID TID
-                    fprintf ( m_handle, "[%04d%02d%02d-%02d%02d%02d %ld][PID:: %d TID:: %s][%s:%ld]::",t_st.tm_year + 1990,t_st.tm_mon,t_st.tm_mday,t_st.tm_hour,t_st.tm_min,t_st.tm_sec,t,(int)GETPID(),tid.c_str(),filename,line );
+                    fprintf ( m_handle, "[%04d%02d%02d-%02d%02d%02d %ld][PID:: %d TID:: %s][%s:%ld]::",t_st.tm_year + 1900,t_st.tm_mon + 1,t_st.tm_mday,t_st.tm_hour,t_st.tm_min,t_st.tm_sec,t,(int)GETPID(),tid.c_str(),filename,line );
                     fprintf ( m_handle,format.c_str(), argv...);
                 }
                 m_lock.unlock();

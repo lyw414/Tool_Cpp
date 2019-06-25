@@ -1,0 +1,7 @@
+# SOCKET INSTRUCTION
+    WINDOWS USING IOCP
+    LINUX USING EPOLL
+    Reginst simple function to recv data
+# HOW TO USE
+     
+    
