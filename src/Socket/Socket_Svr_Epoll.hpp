@@ -24,7 +24,7 @@
 
 namespace LYW_CODE
 {
-    typedef void ( * TDataHandle_Func_Call_Back ) ( SOCKET sck, const std::string & data, void * UserData );
+    typedef void ( * TDataHandle_Func_Call_Back ) ( SOCKET sck, const char * data, int len, void * UserData );
 
     typedef enum _Sokcet_State
     {
@@ -75,8 +75,7 @@ namespace LYW_CODE
         {
             //need finish it
             SOCKET sck;
-            std::string msg;
-            char buffer [1024] = {0};
+            char buffer [4096] = {0};
             int ret = 0;
             struct epoll_event ev = { 0 };
 
@@ -84,7 +83,6 @@ namespace LYW_CODE
             while ( m_svr_status == 1 )
             {
                 ret = m_event_msg_queue.MSGRcv ( &sck, 1 );
-                msg = "";
                 if ( ret == 1 )
                 {
                     //get MSG from msg queue 
@@ -97,17 +95,24 @@ namespace LYW_CODE
                         if ( ret < 0 )
                         {
                             //recv error 
-                            if ( ret == -1 && ( errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN ) )
+                            if ( ret < 0  && ( errno == EWOULDBLOCK || errno == EAGAIN ) )
                             {
                                 //no recv data buf sck is ok
+                                //printf ( "finish read \n");
                                 break;
 
+                            }
+                            else if ( errno == EINTR )
+                            {
+                                printf ( "need read again\n");
+                                continue;
                             }
                             else
                             {
                                 //other error close sck
-                                close ( sck ) ;
+                                close( sck );
                                 epoll_ctl ( m_epfd, EPOLL_CTL_DEL, sck, &ev );
+                                break;
 
                             }
 
@@ -126,22 +131,28 @@ namespace LYW_CODE
                         if ( ret < (int)sizeof ( buffer ) )
                         {
                             //continue recv data
-                            msg += std::string ( buffer, ret );
-                            continue;
+                            if (  m_handle_func != NULL )
+                            {
+                                m_handle_func ( sck, buffer, ret,m_UserArgs );
+                            }
+                            break;
                         }
                         else
                         {
                             //recieve all data 
-                            msg += std::string ( buffer, ret );
-                            break;
+                            if (  m_handle_func != NULL )
+                            {
+                                m_handle_func ( sck, buffer, ret, m_UserArgs );
+                            }
+                            continue;
                         }
                     } // end while finish recv 
 
                     //callback handle this msg
-                    if ( m_handle_func != NULL )
-                    {
-                        m_handle_func ( sck, msg, m_UserArgs );
-                    }
+                    //if ( msg.length() > 0 && m_handle_func != NULL )
+                    //{
+                    //    m_handle_func ( sck, msg, m_UserArgs );
+                    //}
                 }
             }
         }
@@ -158,8 +169,10 @@ namespace LYW_CODE
         {
             int nfds = 0;
             int conn = 0;
-            socklen_t len;
+            unsigned int len;
             struct epoll_event ev;
+            int retry = 0;
+            int connect_num = 0;
             while ( m_svr_status == 1 )
             {
                 
@@ -176,21 +189,30 @@ namespace LYW_CODE
                     // accept connect handle it in control thread 
                     if ( m_epoll_events[iLoop].data.fd == m_sck )
                     {
-                        //accept connect add regist connect handle to epoll
-                        if ( ( conn = accept ( m_sck, (struct sockaddr * ) &m_cli_addr, &len ) ) < 0 )
+                        retry = 0;
+                        while ( retry <= 3 )
                         {
-                            //accept error 
-                            continue;
+                            memset ( &m_cli_addr, 0x00, sizeof ( struct sockaddr ) );
+                            //accept connect add regist connect handle to epoll
+                            if ( ( conn = accept ( m_sck, ( struct sockaddr * )&m_cli_addr, &len ) ) < 0 )
+                            {
+                                //accept error 
+                                //printf ("accept Error![%d]\n", errno);
+                                retry++;
+                                continue;
+                            }
+                            else
+                            {
+                                connect_num++;
+                                printf ( "Connect NUM [%d]\n", connect_num );
+                                //set no blocking 
+                                fcntl(conn, F_SETFL, fcntl(conn, F_GETFL, 0) | O_NONBLOCK);
+                                //regist it 
+                                ev.data.fd = conn;
+                                ev.events = EPOLLIN | EPOLLET;
+                                epoll_ctl( m_epfd, EPOLL_CTL_ADD, conn, &ev );
+                            }     
                         }
-                        else
-                        {
-                            //set no blocking 
-                            fcntl(conn, F_SETFL, fcntl(conn, F_GETFL, 0) | O_NONBLOCK);
-                            //regist it 
-                            ev.data.fd = conn;
-                            ev.events = EPOLLIN | EPOLLET;
-                            epoll_ctl( m_epfd, EPOLL_CTL_ADD, conn, &ev );
-                        }     
                     }
                     else if ( m_epoll_events[iLoop].events & EPOLLIN )
                     {

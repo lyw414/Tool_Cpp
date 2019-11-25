@@ -7,6 +7,8 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <string>
+#include <unistd.h>
 
 namespace LYW_CODE
 {
@@ -28,7 +30,7 @@ namespace LYW_CODE
         {
             if ( m_conn > 0 )
             {
-                close ( m_conn );
+                ::close ( m_conn );
             }
         }
 
@@ -45,9 +47,9 @@ namespace LYW_CODE
             m_ip = ip;
             m_port = port;
 
-            if ( connect ( m_conn,(struct sockaddr*)&their_addr,sizeof ( struct sockaddr ) ) < 0 )
+            if ( ::connect ( m_conn,(struct sockaddr*)&m_addr,sizeof ( struct sockaddr ) ) < 0 )
             {
-                close ( m_conn );
+                ::close ( m_conn );
                 m_conn = -1;
                 return -1;
             }
@@ -62,10 +64,10 @@ namespace LYW_CODE
             int len = 0;
             Data = "";
             Data.resize ( maxlen );
-            len = recv ( m_conn, (char *)Data.c_str(), maxlen,0 );
+            len = ::recv ( m_conn, (char *)Data.c_str(), maxlen,0 );
             if ( len == 0 )
             {
-                close ( m_conn );
+                ::close ( m_conn );
                 m_conn = -1;
             }
             return len;
@@ -74,7 +76,7 @@ namespace LYW_CODE
         int send ( const std::string & Data )
         {
             int ret = 0;
-            ret = send ( m_conn, Data.c_str(),Data.length(), 0 );
+            ret = ::send ( m_conn, Data.c_str(),Data.length(),MSG_NOSIGNAL );
             return ret;
         }
 
@@ -82,10 +84,10 @@ namespace LYW_CODE
         {
             if ( m_conn > 0 )
             {
-                close ( m_conn );
+                ::close ( m_conn );
                 m_conn = -1;
             }
             return 0;
         }
-    }
+    };
 }

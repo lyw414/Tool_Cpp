@@ -103,7 +103,7 @@ void inDo2 ( int index )
         {
             tolNum[index]--;
         }
-        std::this_thread::sleep_for ( std::chrono::microseconds( sleep_time ) );
+        //std::this_thread::sleep_for ( std::chrono::microseconds( sleep_time ) );
     }
 }
 
@@ -124,11 +124,12 @@ int main ( int argc, char * argv[] )
     long interval = 0;
     struct timeval v1;
     struct timeval v2;
+    int zz = InThreadNum  > OutThreadNum ? InThreadNum : OutThreadNum;
 
     creat_msg_queue ();
     
-    tolNum = (int *)malloc ( sizeof ( int ) * InThreadNum );
-    memset ( tolNum,0x00,  sizeof ( int ) * InThreadNum  );
+    tolNum = (int *)malloc ( sizeof ( int ) * zz);
+    memset ( tolNum,0x00,  sizeof ( int ) * zz);
     std::vector < std::thread > ThreadArray_out;
     std::vector < std::thread > ThreadArray_in;
     gettimeofday ( &v1, NULL);
@@ -147,7 +148,7 @@ int main ( int argc, char * argv[] )
     {
         sleep ( 2 );
         p = 1;
-        for ( int iLoop = 0; iLoop < InThreadNum; iLoop ++ )
+        for ( int iLoop = 0; iLoop < zz; iLoop ++ )
         {
             p += tolNum[iLoop];
             //tolNum[iLoop] = 0;

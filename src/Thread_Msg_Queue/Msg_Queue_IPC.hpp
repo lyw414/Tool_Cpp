@@ -33,7 +33,7 @@ namespace LYW_CODE
             void * pointor;
 
             //if file not exist, creat it 
-            if ( ( fHandle = open ( ( m_key_word + "1").c_str(), O_CREAT | O_RDWR ) ) > 0 )
+            if ( ( fHandle = open ( ( m_key_word + "1").c_str(), O_CREAT | O_RDWR, 0666 ) ) > 0 )
             {
                 close ( fHandle );
             }
@@ -58,7 +58,7 @@ namespace LYW_CODE
             }
 
             //used queue init 
-            if ( ( fHandle = open ( ( m_key_word + "2").c_str(), O_CREAT | O_RDWR ) ) > 0 )
+            if ( ( fHandle = open ( ( m_key_word + "2").c_str(), O_CREAT | O_RDWR, 0666 ) ) > 0 )
             {
                 close ( fHandle );
             }
