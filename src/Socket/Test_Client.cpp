@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string>
 #include <iostream>
+#include <stdio.h>
 
 std::string ip;
 int port;
@@ -12,6 +13,7 @@ int thread_num;
 int byte_num;
 int interval;
 int * dataArray;
+int time_1;
 
 void just_recv ( int index )
 {
@@ -64,11 +66,11 @@ void do_client ( int index )
         }
     }
 
-    while ( 1 )
+    while ( time_1 > 0 )
     {
         for ( int iLoop = 0; iLoop < num ; iLoop++  )
         {
-            ret = m_client_array[iLoop].send ( str );
+            //ret = m_client_array[iLoop].send ( str );
             if ( ret <= 0 )
             {
                 std::cout << "Send Failed" << std::endl;
@@ -82,6 +84,13 @@ void do_client ( int index )
             std::this_thread::sleep_for ( std::chrono::microseconds ( interval ) );
         }
     }
+
+        for ( int iLoop = 0; iLoop < num ; iLoop++  )
+        {
+            printf("XXXXXXXXXXXXXXXXXXXXXXXXXXXX\n");
+            //m_client_array[iLoop].close();
+        }
+
     return ;
 }
 
@@ -93,7 +102,7 @@ int main ( int argc, char * argv[] )
     thread_num = atoi ( argv[4] );
     byte_num = atoi ( argv[5] );
     interval = atoi ( argv[6] );
-    int time = atoi ( argv[7] );
+    time_1 = atoi ( argv[7] );
     long totalbyte = 0;
     dataArray = (int *) malloc ( thread_num * sizeof ( int ) );
     memset ( dataArray, 0x00, thread_num * sizeof ( int ) );
@@ -105,16 +114,16 @@ int main ( int argc, char * argv[] )
         m_thread_array.push_back ( std::thread ( do_client, iLoop ) );
     }
 
-    while ( time > 0 )
+    while ( time_1 > 0 )
     {
         totalbyte = 0 ;
         for ( int iLoop = 0; iLoop < thread_num; iLoop++ )
         {
             totalbyte +=dataArray[iLoop];
         }
-        printf ( "Send Msg left [%d]  [%ld]\n",time, totalbyte );
+        printf ( "Send Msg left [%d]  [%ld]\n",time_1, totalbyte );
         std::this_thread::sleep_for ( std::chrono::seconds ( 2 ) );
-        time = time -2;
+        time_1 = time_1 - 2;
     }
     
     for ( int iLoop = 0; iLoop < connect_num; iLoop++ )

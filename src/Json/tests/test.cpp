@@ -21,7 +21,7 @@ int main ( )
    //rapidjson::Document json;
    clock_t start,ends;
    start =clock();
-   while ( iLoop < 10000 )
+   while ( iLoop < 100000 )
    {
         p.Parse(jsStr.c_str());
         iLoop++;

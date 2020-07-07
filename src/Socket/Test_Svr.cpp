@@ -26,7 +26,7 @@ int main ()
 
         sleep ( 2 );
         time+=2;
-        std::cout << "Recv Msg Time ["<< time << "]s Total [" << Msg << "] TPS [" << ( Msg - last ) / 1000 / 2 << "]byte/s ART [" << time * 1000000 / Msg << "]us/byte" << std::endl;
+        std::cout << "Recv Msg Time ["<< time << "]s Total [" << Msg << "] TPS [" << ( Msg - last ) / 1024 / 2 << "]kb/s ART [" << time * 1000000 / Msg << "]us/byte" << std::endl;
         last = Msg;
     }
     epoll_svr.Stop_Svr ();

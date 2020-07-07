@@ -25,7 +25,7 @@ int main ()
 
     pp = jsStr.c_str();
     len = jsStr.length();
-    while ( iLoop < 10000)
+    while ( iLoop < 100000)
     {
 
         json.parse ( (char *)pp,len);

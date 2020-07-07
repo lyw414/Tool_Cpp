@@ -26,7 +26,7 @@ namespace LYW_CODE
 		JsonBuffer()
 		{
 			leftSize = 0;
-			buffSize = 4096;
+			buffSize = 10240;
 		}
 
 		JsonBuffer(int buffSize)

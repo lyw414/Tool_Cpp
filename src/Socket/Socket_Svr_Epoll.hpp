@@ -90,6 +90,7 @@ namespace LYW_CODE
                     {
                         //recv msg
                         ret = recv ( sck, buffer, sizeof ( buffer ), 0 );
+                        
 
                         //recv err
                         if ( ret < 0 )
@@ -210,7 +211,7 @@ namespace LYW_CODE
                                 //regist it 
                                 ev.data.fd = conn;
                                 ev.events = EPOLLIN | EPOLLET;
-                                epoll_ctl( m_epfd, EPOLL_CTL_ADD, conn, &ev );
+                                //epoll_ctl( m_epfd, EPOLL_CTL_ADD, conn, &ev );
                             }     
                         }
                     }
