@@ -1,336 +1,503 @@
+#include "FileIO.hpp"
+#include <map>
+#include <list>
 #include <string.h>
-#include <string>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unordered_map>
-#include <mutex>
-#include <unistd.h>
-#include <vector>
-#include <unordered_map>
 
-#define FILE_STORAGE_BLOCK_SIZE 4096 /*allocate buffer*/
-#define FHANDLE LYW_CODE::FileBlockInfo
 namespace LYW_CODE
 {
-    typedef struct _FileBlockInfo
-    {
-        unsigned long beginIndex;
-        unsigned long blockSize;
-        unsigned long FileIndex;
-        unsigned long UseFlag;
-    } FileBlockInfo;
-
-    typedef struct _FixedHeadIndexFile
-    {
-        unsigned long BlockNum;
-        unsigned long EndIndex;
-    } FixedHeadIndexFile;
-
-
-
+    template <typename IOType = FileIO>
     class FileStorage
     {
-    public:
-        FileStorage()
+        public:
+
+        /*数据结构*/
+        /*数据块索引文件信息结果 存放于索引文件 以及索引文件索引查找*/
+        typedef struct _IndexFileBlockIndexInfo
         {
-            m_FileName = "default.data";
-            m_IndexFileName = "default_index.data";
+            /*数据在数据文件中开始的位置*/
+            unsigned long beginIndex;
+            /*数据块的大小*/
+            unsigned long blockSize;
+            /*索引块在索引文件的位置*/
+            unsigned long pos;
+            /*0 空闲 1 数据资源释放 2 数据资源占用*/
+            unsigned long Tag;
+        }TIndexFileBlockIndexInfo, *PIndexFileBlockIndexInfo;
 
-            m_FileHandle = -1;
-            m_IndexFileHandle = -1;
-            m_IndexMap_Begin.clear();
-            m_IndexMap_End.clear();
-
-            memset(&m_FixedHead, 0x00, sizeof(FixedHeadIndexFile));
-        }
-
-        FileStorage(const std::string &FileName)
+        /*索引文件 文件头结构*/
+        typedef struct _IndexFileHead
         {
-            m_FileName = FileName + ".data";
-            m_IndexFileName = FileName + "_index.data";
+            /*索引块结束的位置*/
+            unsigned long EndPos;
 
-            m_FileHandle = 1;
-        }
+            /*数据文件结束位置*/
+            unsigned long DataEndPos;
+        }TIndexFileHead, *PIndexFileHead;
 
-        ~FileStorage()
+        /*索引文件文件块*/
+        typedef struct  _IndexFileBlock
         {
-            SyncToIndexFile();
-        }
-
-        FileBlockInfo falloc(size_t size)
-        {
-            FileBlockInfo blockInfo;
-            memset(&blockInfo, 0x00, sizeof(FileBlockInfo));
-            if (!IsFileOpen())
+            union 
             {
-                return blockInfo;
+                TIndexFileBlockIndexInfo IndexBlock;
+                TIndexFileHead HeadBlock;
+            };
+        }TIndexFileBlock, * PIndexFileBlock;
+
+
+        public:
+
+            
+            FileStorage()
+            {
+                m_IndexFile = new IOType;
+                m_DataFile = new IOType;
+
+                m_IndexFileName = "./Storage.index";
+                m_DataFileName = "./Storage.data";
+
+                m_FreeIndexBlockCache.clear();
             }
 
-            for (auto &p : m_IndexMap_Begin)
+            ~FileStorage()
             {
-                if (p.second.blockSize >= size)
-                blockInfo = p.second;
-                break;
-            }
-
-            if (blockInfo.blockSize > 0)
-            {
-                m_IndexMap_Begin.erase(blockInfo.beginIndex);
-                m_IndexMap_End.erase(blockInfo.beginIndex + blockInfo.blockSize);
-                return blockInfo;
-            }
-
-            blockInfo.beginIndex = m_FixedHead.EndIndex;
-            blockInfo.blockSize = size;
-            m_FixedHead.EndIndex += size;
-            //m_FixedHead.BlockNum++;
-
-            return blockInfo;
-        }
-
-        void ffree (const FileBlockInfo &Handle)
-        {
-            FreeBlock(&Handle);
-        }
-        
-        /**
-         * @brief Get Data From File
-         *
-         * @param Handle File Block Info
-         * @param Data Data
-         *
-         * @return -1
-         */
-        int LoadData(const FileBlockInfo &Handle,void * Data, size_t iSizeOfData)
-        {
-            int ret = -1;
-            if (!IsFileOpen())
-            {
-                return -1;
-            }
-
-            if (Handle.blockSize > iSizeOfData)
-            {
-                return -1;
-            }
-
-            ::lseek(m_FileHandle, Handle.beginIndex, SEEK_SET);
-            ret = ::read(m_FileHandle, Data, Handle.blockSize);
-            if (ret <= 0 || ret != (int)Handle.blockSize)
-            {
-                return -1; 
-            }
-            return ret;
-        }
-
-
-
-        //void StorageData(const FileBlockInfo &Handle, void *Data)
-        //{
-        //}
-        
-
-        /**
-         * @brief Read Data From File
-         *
-         * @param Handle
-         * @param Data
-         * @param iLenOfData
-         */
-        int StorageData(const FileBlockInfo &Handle, void *Data, size_t iLenOfData)
-        {
-            int ret = -1;
-            if (!IsFileOpen())
-            {
-                return -1;
-            }
-
-            if (Handle.blockSize < iLenOfData)
-            {
-                return -1;
-            }
-
-             ::lseek(m_FileHandle, Handle.beginIndex, SEEK_SET);
-            ret = ::write(m_FileHandle, Data, iLenOfData);
-            return 0;
-        }
-    private:
-
-        bool IsFileOpen()
-        {
-            if (m_FileHandle < 0)
-            {
-                /*File Not Open, open it*/
-                if ((m_FileHandle = open(m_FileName.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR)) < 0)
+                if (m_IndexFile != NULL)
                 {
-                    return false;
+                    m_IndexFile->close();
+                    delete m_IndexFile;
+                    m_IndexFile = NULL;
+                }
+
+                if (m_DataFile != NULL)
+                {
+                    m_DataFile->close();
+                    delete m_DataFile;
+                    m_DataFile = NULL;
                 }
             }
 
-            if (m_IndexFileHandle < 0)
+
+            TIndexFileBlock TranslateHandle(void * handle)
             {
-                if ((m_IndexFileHandle = open(m_IndexFileName.c_str(), O_RDWR | O_CREAT, S_IRUSR | S_IWUSR)) < 0)
+                TIndexFileBlock Handle;
+                memset(&Handle, handle, sizeof(TIndexFileBlock));
+                return Handle;
+            }
+
+           /**
+            * @brief 
+            *
+            * @param handle
+            * @param buf
+            * @param sizeOfbuf
+            *
+            * @return 
+            */
+            int read(unsigned int handle, void *buf, unsigned long sizeOfbuf)
+            {
+                if (handle == 0 || buf == NULL)
+                {
+                    return -1;
+                }
+
+                if (!IsInit())
+                {
+                    return -1;
+                }
+
+                TIndexFileBlock IndexBlock;
+                if (!ReadIndexBlockByPos(handle, &IndexBlock))
+                {
+                    return -1;
+                }
+
+                if (IndexBlock.IndexBlock.blockSize > sizeOfbuf)
                 {
                     return false;
+                }
+
+                m_DataFile->lseek(IndexBlock.IndexBlock.beginIndex,SEEK_SET);
+                return m_DataFile->read(buf, sizeOfbuf, IndexBlock.IndexBlock.blockSize);
+            }
+
+
+            /**
+             * @brief 
+             *
+             * @param handle
+             * @param buf
+             * @param lenOfBuf
+             *
+             * @return 
+             */
+            int write(unsigned int handle, void * buf, unsigned long lenOfBuf)
+            {
+                if (handle == 0 || buf == NULL)
+                {
+                    return -1;
+                }
+
+                if (!IsInit())
+                {
+                    return -1;
+                }
+
+                TIndexFileBlock IndexBlock;
+                if (!ReadIndexBlockByPos(handle,&IndexBlock))
+                {
+                    return 0;
+                }
+                m_DataFile->lseek(IndexBlock.IndexBlock.beginIndex,SEEK_SET);
+                return m_DataFile->write(buf,lenOfBuf);
+            }
+            
+            
+            /**
+             * @brief           获取一块文件存储区域,切记勿修改存储指针内容
+             *
+             * @param size      存储区域大小写
+             *
+             * @return          存储信息指针
+             */
+            unsigned int allocate(unsigned long size)
+            {
+                PIndexFileBlock pIndexBlock = NULL;
+                if (size == 0)
+                {
+                    return 0;
+                }
+
+                if (!IsInit())
+                {
+                    return 0;
+                }
+
+                TIndexFileBlock IndexBlock;
+                
+                /*空闲块中查找*/
+                for (auto &p : m_BeginIndexMap)
+                {
+                    if (p.second.IndexBlock.blockSize >= size)
+                    {
+                        memcpy(&IndexBlock, &p.second, sizeof(TIndexFileBlock));
+                        m_BeginIndexMap.erase(IndexBlock.IndexBlock.beginIndex);
+                        m_EndIndexMap.erase(IndexBlock.IndexBlock.beginIndex + IndexBlock.IndexBlock.blockSize);
+                        IndexBlock.IndexBlock.Tag = 2;
+                        SyncToIndexFile(IndexBlock.IndexBlock.pos, IndexBlock);
+                        return IndexBlock.IndexBlock.pos;
+                    }
+                }
+
+
+
+                IndexBlock.IndexBlock.pos = AllocateIndexBlock();
+                    
+                IndexBlock.IndexBlock.beginIndex = m_IndexFileHead.HeadBlock.DataEndPos;
+                IndexBlock.IndexBlock.blockSize = size;
+                IndexBlock.IndexBlock.Tag = 2;
+
+                m_IndexFileHead.HeadBlock.DataEndPos += size;
+
+                SyncToIndexFile(0, m_IndexFileHead);
+                SyncToIndexFile(IndexBlock.IndexBlock.pos, IndexBlock);
+
+                return IndexBlock.IndexBlock.pos;
+            }
+
+            void free(unsigned int handle)
+            {
+                TIndexFileBlock IndexBlock;
+                unsigned long beginIndex = 0;
+                unsigned long endIndex = 0;
+                unsigned long pos;
+
+                if (handle == 0)
+                {
+                    return;
+                }
+                
+                if (!IsInit())
+                {
+                    return;
+                }
+
+                if (!ReadIndexBlockByPos(handle,&IndexBlock))
+                {
+                    return;
+                }
+ 
+                pos = IndexBlock.IndexBlock.pos;
+
+                /*当前归还块是否需要合并 不合并则需要存储当前索引块*/ 
+                /*往前合并 当前块的首 是否为其他块的尾*/
+                if (m_EndIndexMap.find(IndexBlock.IndexBlock.beginIndex) != m_EndIndexMap.end())
+                {
+                    endIndex = IndexBlock.IndexBlock.beginIndex;
+                    IndexBlock.IndexBlock.pos = m_EndIndexMap[endIndex].IndexBlock.pos;
+                    IndexBlock.IndexBlock.blockSize += m_EndIndexMap[endIndex].IndexBlock.blockSize;
+
+                    IndexBlock.IndexBlock.beginIndex = m_EndIndexMap[endIndex].IndexBlock.beginIndex;
+
+                    m_EndIndexMap.erase(endIndex);
+                    m_BeginIndexMap.erase(IndexBlock.IndexBlock.beginIndex);
+
+                    FreeIndexBlock(IndexBlock);
+                }
+
+
+                /*往后合并*/
+                beginIndex = IndexBlock.IndexBlock.beginIndex + IndexBlock.IndexBlock.blockSize;
+                if (m_BeginIndexMap.find(beginIndex) != m_BeginIndexMap.end())
+                {
+                    IndexBlock.IndexBlock.blockSize += m_BeginIndexMap[beginIndex].IndexBlock.blockSize;
+
+                    IndexBlock.IndexBlock.pos = m_BeginIndexMap[beginIndex].IndexBlock.pos;
+
+                    m_BeginIndexMap.erase(beginIndex);
+                    m_EndIndexMap.erase(IndexBlock.IndexBlock.beginIndex + IndexBlock.IndexBlock.blockSize);
+
+                    FreeIndexBlock(IndexBlock);
+
+                }
+
+                IndexBlock.IndexBlock.pos = pos;
+                /*record*/
+                //IndexBlock.IndexBlock.pos = AllocateIndexBlock();
+                if ( IndexBlock.IndexBlock.beginIndex + IndexBlock.IndexBlock.blockSize == m_IndexFileHead.HeadBlock.DataEndPos)
+                {
+                    m_IndexFileHead.HeadBlock.DataEndPos = IndexBlock.IndexBlock.beginIndex;
+                    FreeIndexBlock(IndexBlock);
+                    SyncToIndexFile(0, m_IndexFileHead);
                 }
                 else
                 {
-                    if (LoadIndexFile() < 0 )
+                    IndexBlock.IndexBlock.Tag = 1;
+                    SyncToIndexFile( IndexBlock.IndexBlock.pos, IndexBlock);
+                    m_BeginIndexMap[IndexBlock.IndexBlock.beginIndex] = IndexBlock;
+                    m_EndIndexMap[IndexBlock.IndexBlock.beginIndex + IndexBlock.IndexBlock.blockSize] = IndexBlock;
+                }
+
+            }
+
+        private:
+
+            bool ReadIndexBlockByPos(unsigned int pos, PIndexFileBlock indexBlock)
+            {
+                if (m_IndexFile == NULL || !m_IndexFile->IsOpen())
+                {
+                    return false;
+                }
+
+
+                if (m_IndexFile->lseek(pos,SEEK_SET) < 0)
+                {
+                    return false;
+                }
+
+                if (m_IndexFile->read(indexBlock,sizeof(TIndexFileBlock), sizeof(TIndexFileBlock)) < 0)
+                {
+                    return false;
+                }
+
+                if (indexBlock->IndexBlock.Tag != 2)
+                {
+                    /*无效索引块*/
+                    return false;
+                }
+                return true;
+            }
+
+
+            bool SyncToIndexFile(unsigned long pos, const TIndexFileBlock & indexBlock)
+            {
+                if (m_IndexFile == NULL || !m_IndexFile->IsOpen())
+                {
+                    return false;
+                }
+
+                if (m_IndexFile->lseek(pos,SEEK_SET) < 0)
+                {
+                    return false;
+                }
+
+                if (m_IndexFile->write(&indexBlock, sizeof(TIndexFileBlock)) < 0)
+                {
+                    return false;
+                }
+                return true;
+            }
+
+
+
+
+
+            unsigned int AllocateIndexBlock()
+            {
+                unsigned int handle = 0;
+                TIndexFileBlock tmp;
+                if (m_IndexFile == NULL || !m_IndexFile->IsOpen())
+                {
+                    return false;
+                }
+
+                if (!m_FreeIndexBlockCache.empty())
+                {
+                    //memcpy(indexBlock, &(m_FreeIndexBlockCache.front()), sizeof(TIndexFileBlock));
+                    handle = (m_FreeIndexBlockCache.front()).IndexBlock.pos;
+                    m_FreeIndexBlockCache.pop_front();
+                }
+                else
+                {
+                    handle = m_IndexFileHead.HeadBlock.EndPos;
+                    m_IndexFileHead.HeadBlock.EndPos += sizeof(TIndexFileBlock);
+                    SyncToIndexFile(0,m_IndexFileHead);
+                    tmp.IndexBlock.pos = handle;
+                    tmp.IndexBlock.Tag = 0;
+                    SyncToIndexFile(handle, tmp);
+                }
+
+               return handle;
+            }
+
+
+            bool FreeIndexBlock(TIndexFileBlock indexBlock)
+            {
+                if (m_IndexFile == NULL || !m_IndexFile->IsOpen())
+                {
+                    return false;
+                }
+                
+                /*文件尾 则缩短文件*/
+                if (indexBlock.IndexBlock.pos + sizeof(TIndexFileBlock) == m_IndexFileHead.HeadBlock.EndPos)
+                {
+                    m_IndexFileHead.HeadBlock.EndPos = indexBlock.IndexBlock.pos;
+
+                    indexBlock.IndexBlock.Tag = 0;
+                    int pos = indexBlock.IndexBlock.pos;
+                    SyncToIndexFile(pos,indexBlock);
+                    return SyncToIndexFile(0, m_IndexFileHead);
+                }
+                else
+                {
+                    m_FreeIndexBlockCache.push_back(indexBlock);
+                    int pos = indexBlock.IndexBlock.pos;
+                    indexBlock.IndexBlock.Tag = 0;
+                    return SyncToIndexFile(pos,indexBlock);
+                }
+            }
+
+            bool InitIndexFile()
+            {
+                m_FreeIndexBlockCache.clear();
+                memset(&m_IndexFileHead, 0x00, sizeof(TIndexFileBlock));
+                m_IndexFileHead.HeadBlock.EndPos = sizeof(TIndexFileBlock);
+                m_IndexFileHead.HeadBlock.DataEndPos = 0;
+                return SyncToIndexFile(0, m_IndexFileHead);
+            }
+ 
+
+            bool IsInit()
+            {
+                TIndexFileBlock tmpIndexBlock;
+                int FileSize = 0;
+                /*数据文件是否就绪*/ 
+                if (!m_DataFile->IsOpen())
+                {
+                    if (m_DataFile->open(m_DataFileName) < 0)
                     {
                         return false;
                     }
                 }
-
-
-            }
-            return true;
-        }
-
-        
-
-        /**
-         * @brief  Load Block Info To Map
-         * 
-         *
-         * @return -1 file not open
-         *        >=0 Num of Free Block
-         *
-         */
-        int LoadIndexFile()
-        {
-            int ret = -1;
-            FileBlockInfo blockInfo;
-
-            if (m_IndexFileHandle < 0)
-            {
-                return -1;
-            }
-
-            ret = ::read(m_IndexFileHandle, &m_FixedHead, sizeof(FixedHeadIndexFile));
-            if (ret != sizeof(FixedHeadIndexFile))
-            {
-                /*Head Error Reset File*/
-                m_FixedHead.BlockNum = 0;
-                m_FixedHead.EndIndex = 0;
-                m_IndexMap_Begin.clear();
-                m_IndexMap_End.clear();
-            }
-            else
-            {
-                /*Load Block Info to Map*/
-                unsigned long iLoop = m_FixedHead.BlockNum;
-                printf("Fixed Head [%ld] [%ld]\n", m_FixedHead.BlockNum, m_FixedHead.EndIndex);
-
-                m_FixedHead.BlockNum = 0;
-                for(; iLoop> 0; iLoop--)
+                
+                /*检测索引文件是否就绪 未就绪读取索引文件 并加载内存*/
+                if (!m_IndexFile->IsOpen())
                 {
-                    ret = ::read(m_IndexFileHandle, &blockInfo, sizeof(FileBlockInfo));
-                    if (ret != sizeof(FileBlockInfo))
+                    if (m_IndexFile->open(m_IndexFileName) < 0)
                     {
-                        m_FixedHead.EndIndex = 0;
-                        m_IndexMap_Begin.clear();
-                        m_IndexMap_End.clear();
-                        return 0;
- 
+                        return false;
                     }
-                    FreeBlock(&blockInfo);
+
+                    FileSize = m_IndexFile->size();
+
+                    /*new file*/
+                    if (FileSize < sizeof(TIndexFileBlock))
+                    {
+                        if (InitIndexFile())
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            return false;
+                        }
+                    }
+
+                    if (m_IndexFile->lseek(0,SEEK_SET) < 0)
+                    {
+                        return false;
+                    }
+
+
+
+                    /*加载内存 此处的块合并逻辑较为简单粗暴 最大的优化点;读取空闲索引块至列表*/
+                    /*读取头*/
+                    if (m_IndexFile->read(&m_IndexFileHead,sizeof(TIndexFileBlock),sizeof(TIndexFileBlock)) != sizeof(TIndexFileBlock))
+                    {
+                        return false;
+                    }
+
+                    /*头文件 offset 读取所有索引块*/
+                    if (FileSize < m_IndexFileHead.HeadBlock.EndPos)
+                    {
+                        if (InitIndexFile())
+                        {
+                            return true;
+                        }
+                        else
+                        {
+                            return false;
+                        }
+                    }
+
+                    FileSize = m_IndexFileHead.HeadBlock.EndPos;
+                    FileSize -= sizeof(TIndexFileBlock);
+
+                    while (FileSize > 0)
+                    {
+                        m_IndexFile->read(&tmpIndexBlock, sizeof(TIndexFileBlock), sizeof(TIndexFileBlock));
+                        FileSize -= sizeof(TIndexFileBlock);
+
+                        if (tmpIndexBlock.IndexBlock.Tag == 0)
+                        {
+                            m_FreeIndexBlockCache.push_back(tmpIndexBlock);
+                        }
+                        else if (tmpIndexBlock.IndexBlock.Tag == 1)
+                        {
+                            m_BeginIndexMap[tmpIndexBlock.IndexBlock.beginIndex] = tmpIndexBlock;
+                            m_EndIndexMap[tmpIndexBlock.IndexBlock.beginIndex + tmpIndexBlock.IndexBlock.blockSize] = tmpIndexBlock;
+
+                        }
+                    }
+
+                    return true;
                 }
-            }
-            return ret;
-        }
-    public:
-        void SyncToIndexFile()
-        {
-            int ret = 0;
-            if (!IsFileOpen())
-            {
-                return;
+                return true;
             }
 
-            if (m_FixedHead.BlockNum != m_IndexMap_Begin.size())
-            {
-                m_FixedHead.BlockNum = m_IndexMap_Begin.size();
-            }
-            ::lseek(m_IndexFileHandle, 0, SEEK_SET);
-            ret = ::write(m_IndexFileHandle, &m_FixedHead, sizeof(FixedHeadIndexFile));
-            for (auto &p : m_IndexMap_Begin)
-            {
-                ret = ::write(m_IndexFileHandle, &p.second,sizeof(FileBlockInfo));
-            }
+        private:
+
+            BaseFileIO * m_IndexFile;
+            std::string m_IndexFileName;
+
+            BaseFileIO * m_DataFile;
+            std::string m_DataFileName;
+            /*空闲的索引块信息 便于索引块的快速存取*/
+            std::list <TIndexFileBlock> m_FreeIndexBlockCache;
+            TIndexFileBlock m_IndexFileHead;
+
+            std::map<unsigned int, TIndexFileBlock> m_BeginIndexMap;
+            std::map<unsigned int, TIndexFileBlock> m_EndIndexMap;
             
-        }
-    private:
-        void FreeBlock(const FileBlockInfo *pBlockInfo)
-        {
-            unsigned long beginIndex = 0;
-
-            if (!IsFileOpen())
-            {
-                return;
-            }
-            if (pBlockInfo == NULL)
-            {
-
-                return;
-            }
-
-            FileBlockInfo blockInfo;
-            memcpy(&blockInfo, pBlockInfo, sizeof(FileBlockInfo));
-            printf("Info[%ld] [%ld] ", blockInfo.beginIndex, blockInfo.blockSize);
-
-            
-            /*front merger*/
-            beginIndex = blockInfo.beginIndex - blockInfo.blockSize;
-            if ( blockInfo.beginIndex != 0 && m_IndexMap_End.find(beginIndex) != m_IndexMap_End.end())
-            {
-                blockInfo.blockSize += m_IndexMap_End[beginIndex].blockSize;
-                blockInfo.beginIndex = m_IndexMap_End[beginIndex].beginIndex;
-
-                m_FixedHead.BlockNum--;
-                m_IndexMap_Begin.erase(blockInfo.beginIndex);
-                m_IndexMap_End.erase( beginIndex);
-
-                printf("front merger[%ld] [%ld] ", blockInfo.beginIndex, blockInfo.blockSize);
-            }
-
-            /*backward merger*/
-            beginIndex = blockInfo.beginIndex + blockInfo.blockSize;
-            if (m_IndexMap_Begin.find(beginIndex) != m_IndexMap_Begin.end())
-            {
-                blockInfo.blockSize += m_IndexMap_Begin[beginIndex].blockSize;
-                m_FixedHead.BlockNum--;
-                m_IndexMap_Begin.erase(beginIndex);
-                m_IndexMap_End.erase(blockInfo.beginIndex + blockInfo.blockSize);
-
-                printf("backward merger[%ld] [%ld] ", blockInfo.beginIndex, blockInfo.blockSize);
-            }
-
-            /*endCheck if beginIndex Is EndIndex No Need record*/
-            beginIndex = blockInfo.beginIndex + blockInfo.blockSize;
-            if (beginIndex >= m_FixedHead.EndIndex)
-            {
-                m_FixedHead.EndIndex = blockInfo.beginIndex;
-                printf("Delete Last[%ld] [%ld]\n", blockInfo.beginIndex, blockInfo.blockSize);
-            }
-            else
-            {
-                m_IndexMap_Begin[blockInfo.beginIndex] = blockInfo;
-                m_IndexMap_End[blockInfo.beginIndex + blockInfo.blockSize] = blockInfo;
-                m_FixedHead.BlockNum++;
-                printf("Add[%ld] [%ld]\n", blockInfo.beginIndex, blockInfo.blockSize);
-            }
-
-        }
-
-
-        int m_FileHandle;
-        int m_IndexFileHandle;
-        FixedHeadIndexFile m_FixedHead;
-        std::mutex m_Lock;
-        std::string m_FileName;
-        std::string m_IndexFileName;
-        std::unordered_map <unsigned long, FileBlockInfo> m_IndexMap_Begin;
-        std::unordered_map <unsigned long, FileBlockInfo> m_IndexMap_End;
     };
 }
+

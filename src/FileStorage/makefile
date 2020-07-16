@@ -1,2 +1,2 @@
 all:
-	g++ -g -std=c++11 test.cpp -I ./
+	g++ -g -o Test Test.cpp -std=c++11 -I ./
