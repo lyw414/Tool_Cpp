@@ -18,8 +18,10 @@ namespace LYW_CODE
             unsigned long beginIndex;
             /*数据块的大小*/
             unsigned long blockSize;
-            /*索引块在索引文件的位置 为0 标识索引块无效*/
+            /*索引块在索引文件的位置*/
             unsigned long pos;
+            /*0 空闲 1 数据资源释放 2 数据资源占用*/
+            unsigned long Tag;
         }TIndexFileBlockIndexInfo, *PIndexFileBlockIndexInfo;
 
         /*索引文件 文件头结构*/
@@ -75,7 +77,13 @@ namespace LYW_CODE
             }
 
 
-            
+            TIndexFileBlock TranslateHandle(void * handle)
+            {
+                TIndexFileBlock Handle;
+                memset(&Handle, handle, sizeof(TIndexFileBlock));
+                return Handle;
+            }
+
            /**
             * @brief 
             *
@@ -85,9 +93,9 @@ namespace LYW_CODE
             *
             * @return 
             */
-            int read(void * handle, void *buf, unsigned long sizeOfbuf)
+            int read(unsigned int handle, void *buf, unsigned long sizeOfbuf)
             {
-                if (handle == NULL || buf == NULL)
+                if (handle == 0 || buf == NULL)
                 {
                     return -1;
                 }
@@ -97,15 +105,19 @@ namespace LYW_CODE
                     return -1;
                 }
 
-                PIndexFileBlock pIndexBlock = (PIndexFileBlock)handle;
+                TIndexFileBlock IndexBlock;
+                if (!ReadIndexBlockByPos(handle, &IndexBlock))
+                {
+                    return -1;
+                }
 
-                if (pIndexBlock->IndexBlock.blockSize > sizeOfbuf)
+                if (IndexBlock.IndexBlock.blockSize > sizeOfbuf)
                 {
                     return false;
                 }
 
-                m_DataFile->lseek(pIndexBlock->IndexBlock.beginIndex,SEEK_SET);
-                return m_DataFile->read(buf, sizeOfbuf, pIndexBlock->IndexBlock.beginIndex);
+                m_DataFile->lseek(IndexBlock.IndexBlock.beginIndex,SEEK_SET);
+                return m_DataFile->read(buf, sizeOfbuf, IndexBlock.IndexBlock.blockSize);
             }
 
 
@@ -118,9 +130,9 @@ namespace LYW_CODE
              *
              * @return 
              */
-            int write(void * handle, void * buf, unsigned long lenOfBuf)
+            int write(unsigned int handle, void * buf, unsigned long lenOfBuf)
             {
-                if (handle == NULL || buf == NULL)
+                if (handle == 0 || buf == NULL)
                 {
                     return -1;
                 }
@@ -130,8 +142,12 @@ namespace LYW_CODE
                     return -1;
                 }
 
-                PIndexFileBlock pIndexBlock = (PIndexFileBlock)handle;
-                m_DataFile->lseek(pIndexBlock->IndexBlock.beginIndex,SEEK_SET);
+                TIndexFileBlock IndexBlock;
+                if (!ReadIndexBlockByPos(handle,&IndexBlock))
+                {
+                    return 0;
+                }
+                m_DataFile->lseek(IndexBlock.IndexBlock.beginIndex,SEEK_SET);
                 return m_DataFile->write(buf,lenOfBuf);
             }
             
@@ -143,55 +159,59 @@ namespace LYW_CODE
              *
              * @return          存储信息指针
              */
-            void * allocate(unsigned long size)
+            unsigned int allocate(unsigned long size)
             {
                 PIndexFileBlock pIndexBlock = NULL;
                 if (size == 0)
                 {
-                    return NULL;
+                    return 0;
                 }
 
                 if (!IsInit())
                 {
-                    return NULL;
+                    return 0;
                 }
 
-                pIndexBlock = new TIndexFileBlock;
+                TIndexFileBlock IndexBlock;
                 
                 /*空闲块中查找*/
                 for (auto &p : m_BeginIndexMap)
                 {
                     if (p.second.IndexBlock.blockSize >= size)
                     {
-                        memcpy(pIndexBlock, &p.second, sizeof(TIndexFileBlock));
-
-                        FreeIndexBlock(p.second);
-
-                        m_BeginIndexMap.erase(pIndexBlock->IndexBlock.beginIndex);
-                        m_EndIndexMap.erase(pIndexBlock->IndexBlock.beginIndex + pIndexBlock->IndexBlock.blockSize);
-
-                        return pIndexBlock;
+                        memcpy(&IndexBlock, &p.second, sizeof(TIndexFileBlock));
+                        m_BeginIndexMap.erase(IndexBlock.IndexBlock.beginIndex);
+                        m_EndIndexMap.erase(IndexBlock.IndexBlock.beginIndex + IndexBlock.IndexBlock.blockSize);
+                        IndexBlock.IndexBlock.Tag = 2;
+                        SyncToIndexFile(IndexBlock.IndexBlock.pos, IndexBlock);
+                        return IndexBlock.IndexBlock.pos;
                     }
                 }
 
-                pIndexBlock->IndexBlock.pos = 0;
-                pIndexBlock->IndexBlock.beginIndex = m_IndexFileHead.HeadBlock.DataEndPos;
-                pIndexBlock->IndexBlock.blockSize = size;
+
+
+                IndexBlock.IndexBlock.pos = AllocateIndexBlock();
+                    
+                IndexBlock.IndexBlock.beginIndex = m_IndexFileHead.HeadBlock.DataEndPos;
+                IndexBlock.IndexBlock.blockSize = size;
+                IndexBlock.IndexBlock.Tag = 2;
 
                 m_IndexFileHead.HeadBlock.DataEndPos += size;
-                SyncToIndexFile(0, m_IndexFileHead);
 
-                return pIndexBlock;
+                SyncToIndexFile(0, m_IndexFileHead);
+                SyncToIndexFile(IndexBlock.IndexBlock.pos, IndexBlock);
+
+                return IndexBlock.IndexBlock.pos;
             }
 
-            void free(void * p )
+            void free(unsigned int handle)
             {
-                PIndexFileBlock indexBlock = (PIndexFileBlock)p;
+                TIndexFileBlock IndexBlock;
                 unsigned long beginIndex = 0;
                 unsigned long endIndex = 0;
                 unsigned long pos;
 
-                if (indexBlock == NULL)
+                if (handle == 0)
                 {
                     return;
                 }
@@ -201,51 +221,93 @@ namespace LYW_CODE
                     return;
                 }
 
+                if (!ReadIndexBlockByPos(handle,&IndexBlock))
+                {
+                    return;
+                }
+ 
+
                 /*当前归还块是否需要合并 不合并则需要存储当前索引块*/ 
                 /*往前合并 当前块的首 是否为其他块的尾*/
-                if (m_EndIndexMap.find(indexBlock->IndexBlock.beginIndex) != m_EndIndexMap.end())
+                if (m_EndIndexMap.find(IndexBlock.IndexBlock.beginIndex) != m_EndIndexMap.end())
                 {
-                    endIndex = indexBlock->IndexBlock.beginIndex;
+                    endIndex = IndexBlock.IndexBlock.beginIndex;
 
-                    pos = m_EndIndexMap[indexBlock->IndexBlock.beginIndex].IndexBlock.pos;
-                    indexBlock->IndexBlock.beginIndex = m_EndIndexMap[indexBlock->IndexBlock.beginIndex].IndexBlock.beginIndex;
-                    indexBlock->IndexBlock.blockSize += m_EndIndexMap[indexBlock->IndexBlock.beginIndex].IndexBlock.blockSize;
+                    pos = m_EndIndexMap[IndexBlock.IndexBlock.beginIndex].IndexBlock.pos;
+                    IndexBlock.IndexBlock.beginIndex = m_EndIndexMap[IndexBlock.IndexBlock.beginIndex].IndexBlock.beginIndex;
+                    IndexBlock.IndexBlock.blockSize += m_EndIndexMap[IndexBlock.IndexBlock.beginIndex].IndexBlock.blockSize;
 
                     m_EndIndexMap.erase(endIndex);
-                    m_BeginIndexMap.erase(indexBlock->IndexBlock.beginIndex);
+                    m_BeginIndexMap.erase(IndexBlock.IndexBlock.beginIndex);
 
-                    indexBlock->IndexBlock.pos = pos;
-                    FreeIndexBlock(*indexBlock);
-
-                    indexBlock->IndexBlock.pos = 0;
-                    SyncToIndexFile(pos, *indexBlock);
+                    IndexBlock.IndexBlock.pos = pos;
+                    FreeIndexBlock(IndexBlock);
                 }
 
                 /*往后合并*/
-                beginIndex = indexBlock->IndexBlock.beginIndex + indexBlock->IndexBlock.blockSize;
+                beginIndex = IndexBlock.IndexBlock.beginIndex + IndexBlock.IndexBlock.blockSize;
                 if (m_BeginIndexMap.find(beginIndex) != m_BeginIndexMap.end())
                 {
-                    indexBlock->IndexBlock.blockSize += m_BeginIndexMap[beginIndex].IndexBlock.blockSize;
+                    IndexBlock.IndexBlock.blockSize += m_BeginIndexMap[beginIndex].IndexBlock.blockSize;
 
                     pos = m_BeginIndexMap[beginIndex].IndexBlock.pos;
 
                     m_BeginIndexMap.erase(beginIndex);
-                    m_EndIndexMap.erase(indexBlock->IndexBlock.beginIndex + indexBlock->IndexBlock.blockSize);
+                    m_EndIndexMap.erase(IndexBlock.IndexBlock.beginIndex + IndexBlock.IndexBlock.blockSize);
 
-                    indexBlock->IndexBlock.pos = pos;
-                    FreeIndexBlock(*indexBlock);
+                    IndexBlock.IndexBlock.pos = pos;
+                    FreeIndexBlock(IndexBlock);
 
-                    indexBlock->IndexBlock.pos = 0;
-                    SyncToIndexFile(pos, *indexBlock);
                 }
 
                 /*record*/
-                GetIndexBlock(indexBlock);
-                m_FreeIndexBlockCache.push_back(*indexBlock);
+                //IndexBlock.IndexBlock.pos = AllocateIndexBlock();
+                if ( IndexBlock.IndexBlock.beginIndex + IndexBlock.IndexBlock.blockSize == m_IndexFileHead.HeadBlock.DataEndPos)
+                {
+                    m_IndexFileHead.HeadBlock.DataEndPos = IndexBlock.IndexBlock.beginIndex;
+                    FreeIndexBlock(IndexBlock);
+                    SyncToIndexFile(0, m_IndexFileHead);
+                }
+                else
+                {
+                    IndexBlock.IndexBlock.Tag = 1;
+                    SyncToIndexFile( IndexBlock.IndexBlock.pos, IndexBlock);
+                    m_BeginIndexMap[IndexBlock.IndexBlock.beginIndex] = IndexBlock;
+                    m_EndIndexMap[IndexBlock.IndexBlock.beginIndex + IndexBlock.IndexBlock.blockSize] = IndexBlock;
+                }
+
                 //delete indexBlock;
             }
 
         private:
+
+            bool ReadIndexBlockByPos(unsigned int pos, PIndexFileBlock indexBlock)
+            {
+                if (m_IndexFile == NULL || !m_IndexFile->IsOpen())
+                {
+                    return false;
+                }
+
+
+                if (m_IndexFile->lseek(pos,SEEK_SET) < 0)
+                {
+                    return false;
+                }
+
+                if (m_IndexFile->read(indexBlock,sizeof(TIndexFileBlock), sizeof(TIndexFileBlock)) < 0)
+                {
+                    return false;
+                }
+
+                if (indexBlock->IndexBlock.Tag != 2)
+                {
+                    /*无效索引块*/
+                    return false;
+                }
+                return true;
+            }
+
+
             bool SyncToIndexFile(unsigned long pos, const TIndexFileBlock & indexBlock)
             {
                 if (m_IndexFile == NULL || !m_IndexFile->IsOpen())
@@ -269,8 +331,10 @@ namespace LYW_CODE
 
 
 
-            bool GetIndexBlock(PIndexFileBlock indexBlock)
+            unsigned int AllocateIndexBlock()
             {
+                unsigned int handle = 0;
+                TIndexFileBlock tmp;
                 if (m_IndexFile == NULL || !m_IndexFile->IsOpen())
                 {
                     return false;
@@ -278,19 +342,23 @@ namespace LYW_CODE
 
                 if (!m_FreeIndexBlockCache.empty())
                 {
-                    memcpy(indexBlock, &(m_FreeIndexBlockCache.front()), sizeof(TIndexFileBlock));
+                    //memcpy(indexBlock, &(m_FreeIndexBlockCache.front()), sizeof(TIndexFileBlock));
+                    handle = (m_FreeIndexBlockCache.front()).IndexBlock.pos;
                     m_FreeIndexBlockCache.pop_front();
-                    return true;
                 }
                 else
                 {
-                    indexBlock->IndexBlock.pos = m_IndexFileHead.HeadBlock.EndPos;
-
+                    handle = m_IndexFileHead.HeadBlock.EndPos;
                     m_IndexFileHead.HeadBlock.EndPos += sizeof(TIndexFileBlock);
                     SyncToIndexFile(0,m_IndexFileHead);
-                    return true;
+                    tmp.IndexBlock.pos = handle;
+                    tmp.IndexBlock.Tag = 0;
+                    SyncToIndexFile(handle, tmp);
                 }
+
+               return handle;
             }
+
 
             bool FreeIndexBlock(TIndexFileBlock indexBlock)
             {
@@ -309,7 +377,7 @@ namespace LYW_CODE
                 {
                     m_FreeIndexBlockCache.push_back(indexBlock);
                     int pos = indexBlock.IndexBlock.pos;
-                    indexBlock.IndexBlock.pos = 0;
+                    indexBlock.IndexBlock.Tag = 0;
                     return SyncToIndexFile(pos,indexBlock);
                 }
             }
@@ -395,11 +463,11 @@ namespace LYW_CODE
                         m_IndexFile->read(&tmpIndexBlock, sizeof(TIndexFileBlock), sizeof(TIndexFileBlock));
                         FileSize -= sizeof(TIndexFileBlock);
 
-                        if (tmpIndexBlock.IndexBlock.pos == 0)
+                        if (tmpIndexBlock.IndexBlock.Tag == 0)
                         {
                             m_FreeIndexBlockCache.push_back(tmpIndexBlock);
                         }
-                        else
+                        else if (tmpIndexBlock.IndexBlock.Tag == 1)
                         {
                             m_BeginIndexMap[tmpIndexBlock.IndexBlock.beginIndex] = tmpIndexBlock;
                             m_EndIndexMap[tmpIndexBlock.IndexBlock.beginIndex + tmpIndexBlock.IndexBlock.blockSize] = tmpIndexBlock;
