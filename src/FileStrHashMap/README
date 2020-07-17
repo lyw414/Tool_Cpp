@@ -1,2 +1,5 @@
-Hash Map 
+# Hash Map 
 key must be string , simple hash map ,but it will storage in file
+
+# Use FileStorage
+Known Hash Map also has index, index data may add to memery, all data will be storage in file, do synchozie
