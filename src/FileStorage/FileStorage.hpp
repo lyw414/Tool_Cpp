@@ -184,6 +184,7 @@ namespace LYW_CODE
                         m_EndIndexMap.erase(IndexBlock.IndexBlock.beginIndex + IndexBlock.IndexBlock.blockSize);
                         IndexBlock.IndexBlock.Tag = 2;
                         SyncToIndexFile(IndexBlock.IndexBlock.pos, IndexBlock);
+                        m_UsedIndexMap[IndexBlock.IndexBlock.pos] = IndexBlock;
                         return IndexBlock.IndexBlock.pos;
                     }
                 }
@@ -195,6 +196,8 @@ namespace LYW_CODE
                 IndexBlock.IndexBlock.beginIndex = m_IndexFileHead.HeadBlock.DataEndPos;
                 IndexBlock.IndexBlock.blockSize = size;
                 IndexBlock.IndexBlock.Tag = 2;
+
+                m_UsedIndexMap[IndexBlock.IndexBlock.pos] = IndexBlock;
 
                 m_IndexFileHead.HeadBlock.DataEndPos += size;
 
@@ -275,6 +278,7 @@ namespace LYW_CODE
                     SyncToIndexFile( IndexBlock.IndexBlock.pos, IndexBlock);
                     m_BeginIndexMap[IndexBlock.IndexBlock.beginIndex] = IndexBlock;
                     m_EndIndexMap[IndexBlock.IndexBlock.beginIndex + IndexBlock.IndexBlock.blockSize] = IndexBlock;
+                    m_UsedIndexMap[IndexBlock.IndexBlock.pos] = IndexBlock;
                 }
 
             }
@@ -294,9 +298,17 @@ namespace LYW_CODE
                     return false;
                 }
 
-                if (m_IndexFile->read(indexBlock,sizeof(TIndexFileBlock), sizeof(TIndexFileBlock)) < 0)
+
+                if (m_UsedIndexMap.find(pos) == m_UsedIndexMap.end())
                 {
-                    return false;
+                    if (m_IndexFile->read(indexBlock,sizeof(TIndexFileBlock), sizeof(TIndexFileBlock)) < 0)
+                    {
+                        return false;
+                    }
+                }
+                else
+                {
+                    memcpy(indexBlock,&(m_UsedIndexMap[pos]), sizeof(TIndexFileBlock));
                 }
 
                 if (indexBlock->IndexBlock.Tag != 2)
@@ -366,6 +378,8 @@ namespace LYW_CODE
                 {
                     return false;
                 }
+
+                m_UsedIndexMap.erase(indexBlock.IndexBlock.pos);
                 
                 /*文件尾 则缩短文件*/
                 if (indexBlock.IndexBlock.pos + sizeof(TIndexFileBlock) == m_IndexFileHead.HeadBlock.EndPos)
@@ -375,6 +389,7 @@ namespace LYW_CODE
                     indexBlock.IndexBlock.Tag = 0;
                     int pos = indexBlock.IndexBlock.pos;
                     SyncToIndexFile(pos,indexBlock);
+
                     return SyncToIndexFile(0, m_IndexFileHead);
                 }
                 else
@@ -475,8 +490,13 @@ namespace LYW_CODE
                         {
                             m_BeginIndexMap[tmpIndexBlock.IndexBlock.beginIndex] = tmpIndexBlock;
                             m_EndIndexMap[tmpIndexBlock.IndexBlock.beginIndex + tmpIndexBlock.IndexBlock.blockSize] = tmpIndexBlock;
-
+                            m_UsedIndexMap[tmpIndexBlock.IndexBlock.pos] = tmpIndexBlock;
                         }
+                        else
+                        {
+                            m_UsedIndexMap[tmpIndexBlock.IndexBlock.pos] = tmpIndexBlock;
+                        }
+
                     }
 
                     return true;
@@ -491,12 +511,17 @@ namespace LYW_CODE
 
             BaseFileIO * m_DataFile;
             std::string m_DataFileName;
-            /*空闲的索引块信息 便于索引块的快速存取*/
+
+            /*空闲的索引块信息 无效的索引块 用于快速分配索引块*/
             std::list <TIndexFileBlock> m_FreeIndexBlockCache;
             TIndexFileBlock m_IndexFileHead;
-
+            
+            /*归还块 索引缓存 （块虽然归还，但是没有合并或者丢弃（末尾块会丢弃，以控制文件大小）*/
             std::map<unsigned int, TIndexFileBlock> m_BeginIndexMap;
             std::map<unsigned int, TIndexFileBlock> m_EndIndexMap;
+            
+            /*持有块 索引缓存*/
+            std::map<unsigned int, TIndexFileBlock> m_UsedIndexMap;
             
     };
 }
