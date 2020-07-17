@@ -3,6 +3,9 @@
 #include <list>
 #include <string.h>
 
+#define FSHandle unsigned int
+#define FSPointor unsigned int
+
 namespace LYW_CODE
 {
     template <typename IOType = FileIO>
@@ -206,6 +209,63 @@ namespace LYW_CODE
 
                 return IndexBlock.IndexBlock.pos;
             }
+
+            void fset(unsigned int handle, unsigned char ch)
+            {
+                char buf[1024] = {0};
+                memset(buf, ch, sizeof(buf));
+                TIndexFileBlock IndexBlock;
+                if (handle == 0)
+                {
+                    return;
+                }
+                
+                if (!IsInit())
+                {
+                    return;
+                }
+
+                if (!ReadIndexBlockByPos(handle,&IndexBlock))
+                {
+                    return;
+                }
+
+                unsigned int Size = IndexBlock.IndexBlock.blockSize;
+                m_DataFile->lseek(IndexBlock.IndexBlock.blockSize,SEEK_SET);
+                while (Size >= sizeof(buf) )
+                {
+                    m_DataFile->write(buf,sizeof(buf));
+                    Size -= sizeof(buf);
+                }
+
+                if (Size > 0)
+                {
+                    m_DataFile->write(buf, Size);
+                }
+            }
+
+            unsigned long size(unsigned int handle)
+            {
+                TIndexFileBlock IndexBlock;
+                if (handle == 0)
+                {
+                    return 0;
+                }
+                
+                if (!IsInit())
+                {
+                    return 0;
+                }
+
+                if (!ReadIndexBlockByPos(handle,&IndexBlock))
+                {
+                    return 0;
+                }
+
+                return IndexBlock.IndexBlock.blockSize;
+
+            }
+
 
             void free(unsigned int handle)
             {
