@@ -1,5 +1,11 @@
-# Hash Map 
+#Hash Map 
 key must be string , simple hash map ,but it will storage in file
 
-# Use FileStorage
+#Use FileStorage
 Known Hash Map also has index, index data may add to memery, all data will be storage in file, do synchozie
+
+策略：
+  1、隔离IO操作，继承基础IO接口；默认实现了FILEIO
+  2、文件块管理，索引 + 数据块，索引全备份，相邻块合并；索引缓存，优先使用空闲索引以及闲置未清理数据块（此处合并逻辑与管理逻辑过于简单粗暴 存在很大的优化空间）
+  3、基于文件存储接口 allocate free write read fset等基础操作，开发基于文件的HASHMAP， 可以选择索引缓存（桶缓存），亦可不缓存，此处的仅为了实现基于文件的数据结构，HASHMAP仅
+     做了最基础的实现，没有过多的参考意义
