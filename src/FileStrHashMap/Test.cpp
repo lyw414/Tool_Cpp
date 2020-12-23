@@ -3,7 +3,7 @@
 int main(int argc, char ** argv)
 {
     LYW_CODE::FileStrHashMap m_map;
-    m_map.Init(16);
+    m_map.Init(20);
     
     char buf[1024] = {0};
     if (argc < 2)

@@ -11,9 +11,9 @@ namespace LYW_CODE
         /*文件存储结构*/
         typedef struct _MapNode_FS
         {
-            FSHandle keyData;
-            FSHandle Data;
-            FSHandle nextNode;
+            FileStorageHandle keyData;
+            FileStorageHandle Data;
+            FileStorageHandle nextNode;
         }TMapNode_FS;
 
         /*内存结构 用于缓存数据*/
@@ -27,12 +27,12 @@ namespace LYW_CODE
         {
             TData_MM key;
             TData_MM data;
-            FSHandle nextNode;
+            FileStorageHandle nextNode;
         }TMapNode_MM;
 
         typedef struct _MapInfo
         {
-            FSHandle m_bucket;
+            FileStorageHandle m_bucket;
             unsigned int m_maxSize;
         }TMapInfo;
 
@@ -56,31 +56,31 @@ namespace LYW_CODE
 
     public:
 
-        FileStrHashMap() 
+        FileStrHashMap() : m_storage("HashMapFile")
         {
             m_info.m_maxSize = 10240;
             m_info.m_bucket = 0;
         }
 
-        FSHandle Init()
+        FileStorageHandle Init()
         {
             S_info = m_storage.allocate(sizeof(TMapInfo));
             m_info.m_maxSize = 10240;
             printf("%d\n", S_info);
-            m_info.m_bucket = m_storage.allocate(sizeof(FSHandle) * m_info.m_maxSize);
+            m_info.m_bucket = m_storage.allocate(sizeof(FileStorageHandle) * m_info.m_maxSize);
 
             m_storage.write(S_info, &m_info, sizeof(TMapInfo));
 
             m_storage.fset(m_info.m_bucket,0x00);
             
             /*缓存桶*/ 
-            m_bucket_cache = (FSHandle *)malloc(sizeof(FSHandle) * m_info.m_maxSize);
+            m_bucket_cache = (FileStorageHandle *)malloc(sizeof(FileStorageHandle) * m_info.m_maxSize);
             m_storage.read(m_info.m_bucket, m_bucket_cache, sizeof(TMapNode_FS) * m_info.m_maxSize);
             return S_info;
 
         }
      
-        FSHandle Init(FSHandle infoHandle)
+        FileStorageHandle Init(FileStorageHandle infoHandle)
         {
             S_info = infoHandle;
             if (m_storage.read(S_info, &m_info, sizeof(TMapInfo)) != sizeof(TMapInfo))
@@ -89,7 +89,7 @@ namespace LYW_CODE
             }
             else
             {
-                m_bucket_cache = (FSHandle *)malloc(sizeof(FSHandle) * m_info.m_maxSize);
+                m_bucket_cache = (FileStorageHandle *)malloc(sizeof(FileStorageHandle) * m_info.m_maxSize);
                 m_storage.read(m_info.m_bucket, m_bucket_cache, sizeof(TMapNode_FS) * m_info.m_maxSize);
             }
 
@@ -103,7 +103,7 @@ namespace LYW_CODE
         unsigned char *tmpBuf = NULL;
         unsigned int len = 0;
         unsigned int tmp = 0;
-        FSHandle nodeHandle;
+        FileStorageHandle nodeHandle;
         TMapNode_FS tmpNode;
         TData_MM *DataNode;
         if (m_bucket_cache[index] == 0)
@@ -171,8 +171,8 @@ namespace LYW_CODE
         unsigned char *tmpBuf = NULL;
         unsigned int len = 0;
         unsigned int tmp = 0;
-        FSHandle nodeHandle;
-        FSHandle PreHandle;
+        FileStorageHandle nodeHandle;
+        FileStorageHandle PreHandle;
         TMapNode_FS tmpNode;
         TData_MM *DataNode;
 
@@ -213,7 +213,7 @@ namespace LYW_CODE
 
                 DataNode = (TData_MM *)tmpBuf;
 
-                m_storage.free(tmpNode.Data);
+                m_storage.Free(tmpNode.Data);
 
                 tmpNode.Data = m_storage.allocate(tmp);
                 DataNode->dataLen = lenOfData;
@@ -279,7 +279,7 @@ namespace LYW_CODE
         if (m_bucket_cache[index] == 0)
         {
             m_bucket_cache[index] = nodeHandle;
-            m_storage.write(m_info.m_bucket, m_bucket_cache, sizeof(FSHandle) * m_info.m_maxSize);
+            m_storage.write(m_info.m_bucket, m_bucket_cache, sizeof(FileStorageHandle) * m_info.m_maxSize);
         }
         else
         {
@@ -296,8 +296,8 @@ namespace LYW_CODE
         unsigned char *tmpBuf = NULL;
         unsigned int len = 0;
         unsigned int tmp = 0;
-        FSHandle nodeHandle;
-        FSHandle preNode;
+        FileStorageHandle nodeHandle;
+        FileStorageHandle preNode;
         TMapNode_FS tmpNode;
         TData_MM *DataNode;
         if (m_bucket_cache[index] == 0)
@@ -329,9 +329,9 @@ namespace LYW_CODE
             if (key == std::string((char *)DataNode->data,DataNode->dataLen))
             {
 
-                m_storage.free(tmpNode.keyData);
-                m_storage.free(tmpNode.Data);
-                m_storage.free(nodeHandle);
+                m_storage.Free(tmpNode.keyData);
+                m_storage.Free(tmpNode.Data);
+                m_storage.Free(nodeHandle);
                 nodeHandle = tmpNode.nextNode;
                 if (preNode != 0)
                 {
@@ -342,7 +342,7 @@ namespace LYW_CODE
                 else
                 {
                     m_bucket_cache[index] = nodeHandle;
-                    m_storage.write(m_info.m_bucket, m_bucket_cache, sizeof(FSHandle) * m_info.m_maxSize);
+                    m_storage.write(m_info.m_bucket, m_bucket_cache, sizeof(FileStorageHandle) * m_info.m_maxSize);
                 }
             }
 
@@ -361,11 +361,11 @@ namespace LYW_CODE
         std::string m_HeadFileName;
         int m_fileHandle;
 
-         FSHandle * m_bucket_cache;
+         FileStorageHandle * m_bucket_cache;
 
     private :
         /*存储*/
-        FSHandle S_info;
+        FileStorageHandle S_info;
     };
 
 }

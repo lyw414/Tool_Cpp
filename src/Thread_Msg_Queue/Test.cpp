@@ -16,7 +16,7 @@ key_t key_msg;
 int msgID;
 
 LYW_CODE :: Thread_Msg_Queue arrayList ( 1024, 1024 );
-LYW_CODE :: Msg_Queue_IPC msg_queue ( "./IPC", 1024, 1024 );
+LYW_CODE :: Msg_Queue_IPC msg_queue ( "./IPC", 1024, 128);
 int * tolNum;
 int flg = 1;
 int sleep_time;
@@ -51,9 +51,10 @@ void outDo2 ( int num )
     char buf[1024] = {0};
     while ( flg == 1 )
     {
-        if ( msg_queue.MSGRcv ( buf, -1 ) )
+        if ( msg_queue.MSGRcv ( buf, -1 ) == 1)
         {
             tolNum[num]++;
+            //printf("Recv Msg\n");
         }
     }
 }
@@ -84,9 +85,9 @@ void inDo1 ( int index )
     {
         if ( msgsnd( msgID,buf,8,0 ) < 0  ) 
         {
-            tolNum[index]--;
+            //tolNum[index]--;
         }
-        //std::this_thread::sleep_for ( std::chrono::microseconds( sleep_time ) );
+        std::this_thread::sleep_for ( std::chrono::microseconds( sleep_time ) );
     }
 }
 
@@ -101,9 +102,10 @@ void inDo2 ( int index )
     {
         if (  msg_queue.MSGSnd ( buf ) < 0  ) 
         {
+            printf("Send Failed\n");
             tolNum[index]--;
         }
-        //std::this_thread::sleep_for ( std::chrono::microseconds( sleep_time ) );
+        std::this_thread::sleep_for ( std::chrono::microseconds( sleep_time ) );
     }
 }
 
@@ -116,10 +118,10 @@ bool creat_msg_queue ()
 
 int main ( int argc, char * argv[] ) 
 {
-    int InThreadNum  = 1;
-    int OutThreadNum = 2;
+    int InThreadNum  = 4;
+    int OutThreadNum = 8;
     int InInterval = 0;
-    sleep_time = 100;
+    sleep_time = 1;
     long p = 1;
     long interval = 0;
     struct timeval v1;
@@ -136,12 +138,12 @@ int main ( int argc, char * argv[] )
     
     for ( int iLoop = 0; iLoop < OutThreadNum; iLoop++ )
     {
-        ThreadArray_out.push_back ( std::thread ( outDo1,iLoop ) );
+        ThreadArray_out.push_back ( std::thread ( outDo2,iLoop ) );
     }
 
     for ( int iLoop = 0; iLoop < InThreadNum; iLoop++ )
     {
-        ThreadArray_in.push_back ( std::thread ( inDo1,iLoop ) );
+        ThreadArray_in.push_back ( std::thread ( inDo2,iLoop ) );
     }
     
     while ( 1 )
@@ -155,9 +157,9 @@ int main ( int argc, char * argv[] )
         }
         gettimeofday ( &v2, NULL);
         interval =  v2.tv_sec*1000000 + v2.tv_usec - v1.tv_sec*1000000 - v1.tv_usec;
-        interval /= 1000;
+        //interval = 1000;
 
-        printf ("Times [%d] [%ld] TPS [%d] ART [%d]us\n", interval,p, p * 1000 / interval, interval * 1000 / p );
+        printf ("Times [%d] [%ld] TPS [%d] ART [%d]us\n", interval,p, p*1000  /  (interval / 1000), interval / p );
     }
     return 0; 
 }

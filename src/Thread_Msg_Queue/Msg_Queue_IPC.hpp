@@ -8,6 +8,9 @@
 #include <string.h>
 #include <chrono>
 #include <unistd.h>
+
+#define KEY 1022
+#define KEY1 1023
 namespace LYW_CODE
 {
     class Msg_Queue_IPC 
@@ -33,23 +36,31 @@ namespace LYW_CODE
             void * pointor;
 
             //if file not exist, creat it 
-            if ( ( fHandle = open ( ( m_key_word + "1").c_str(), O_CREAT | O_RDWR, 0666 ) ) > 0 )
-            {
-                close ( fHandle );
-            }
+            //if ( ( fHandle = open ( ( m_key_word + "1").c_str(), O_CREAT | O_RDWR, 0666 ) ) > 0 )
+            //{
+            //    close ( fHandle );
+            //}
 
             //free queue init 
-            key =  ftok ( ( m_key_word + "1").c_str(), 'a' );
+            //key =  ftok ( ( m_key_word + "1").c_str(), 'a' );
             
 
-            m_msgID_free = msgget ( key, IPC_CREAT|IPC_EXCL|0666 );
+            m_msgID_free = msgget ( KEY, IPC_CREAT|IPC_EXCL|0666 );
+
             if ( m_msgID_free == -1 )
             {
                 //free it and creat
-                m_msgID_free = msgget ( key, IPC_CREAT|0666 );
+                m_msgID_free = msgget ( KEY, IPC_CREAT|0666 );
                 msgctl ( m_msgID_free,IPC_RMID,NULL );
-                m_msgID_free = msgget ( key, IPC_CREAT|IPC_EXCL|0666 );
+                m_msgID_free = msgget ( KEY, IPC_CREAT|IPC_EXCL|0666 );
+
+                if (m_msgID_used == -1)
+                {
+                    printf("Create SHM Failed!\n");
+                }
             }
+
+            printf("Create SHM %d!\n", m_msgID_free);
             //push addr to free queue 
             for ( int iLoop = 0; iLoop < ArraySize ; iLoop++ )
             {
@@ -58,20 +69,26 @@ namespace LYW_CODE
             }
 
             //used queue init 
-            if ( ( fHandle = open ( ( m_key_word + "2").c_str(), O_CREAT | O_RDWR, 0666 ) ) > 0 )
-            {
-                close ( fHandle );
-            }
+            //if ( ( fHandle = open ( ( m_key_word + "2").c_str(), O_CREAT | O_RDWR, 0666 ) ) > 0 )
+            //{
+            //    close ( fHandle );
+            //}
 
-            key = ftok ( (m_key_word + "2").c_str(), 'a' );
-            m_msgID_used = msgget ( key, IPC_CREAT | IPC_EXCL | 0666 );
+            //key = ftok ( (m_key_word + "2").c_str(), 'a' );
+            m_msgID_used = msgget ( KEY1, IPC_CREAT | IPC_EXCL | 0666 );
             if ( m_msgID_used == -1 )
             {
                 //free it and creat 
-                m_msgID_used = msgget ( key, IPC_CREAT|0666 );
+                m_msgID_used = msgget ( KEY1, IPC_CREAT|0666 );
                 msgctl ( m_msgID_used, IPC_RMID, NULL );
-                m_msgID_used = msgget ( key, IPC_CREAT|IPC_EXCL|0666 );
+                m_msgID_used = msgget ( KEY1, IPC_CREAT|IPC_EXCL|0666 );
+                if (m_msgID_used == -1)
+                {
+                    printf("Create SHM Failed!\n");
+                }
             }
+
+            printf("Create SHM %d!\n", m_msgID_used);
             m_DataSize = DataSize;
             m_ArraySize = ArraySize;
 

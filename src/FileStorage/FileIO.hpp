@@ -23,7 +23,7 @@ namespace LYW_CODE
              *
              * @return 
              */
-            virtual int open(const std::string & fileName, int Mode = 0) = 0;
+            virtual int open(const std::string & fileName, int Mode) = 0;
 
             /**
              * @brief  lseek
@@ -75,6 +75,17 @@ namespace LYW_CODE
              */
             virtual int size() = 0;
 
+            
+            /**
+             * @brief  truncate file 
+             *
+             * @param len offset len
+             *
+             * @return    0   success
+             *          < 0   failed
+             */
+            virtual int ftruncate(off_t len) = 0;
+
             virtual ~BaseFileIO() {};
     };
 
@@ -119,7 +130,7 @@ namespace LYW_CODE
              * @return  -1 open failed 
              *           1 open OK 
              */
-            int open(const std::string & fileName, int Mode = 0) 
+            int open(const std::string & fileName, int Mode) 
             {
                 if (fileName == "")
                 {
@@ -234,6 +245,26 @@ namespace LYW_CODE
                 {
                     ::lseek(m_handle, 0, SEEK_SET);
                     return ::lseek(m_handle, 0, SEEK_END);
+                }
+                else
+                {
+                    return -1;
+                }
+            }
+
+            /**
+             * @brief       truncate file
+             *
+             * @param len   offset len
+             *
+             * @return      0   success
+             *            < 0   failed
+             */
+            int ftruncate(off_t len)
+            {
+                if (m_handle > 0)
+                {
+                    return ::ftruncate(m_handle, len);
                 }
                 else
                 {

@@ -3,7 +3,7 @@
 #include <string.h>
 
 
-int total = 100000;
+int total = 5000000;
 
 int add( LYW_CODE::FileStrHashMap & m_map)
 {
@@ -72,14 +72,14 @@ int del( LYW_CODE::FileStrHashMap & m_map)
 int main(int argc, char ** argv)
 {
     LYW_CODE::FileStrHashMap m_map;
-    m_map.Init(16);
+    m_map.Init(20);
 
     int t = 0;
     t = add (m_map);
     printf("add TPS[%d]\n", t);
-    //t = find (m_map);
-    //printf("add TPS[%d]\n", t);
-    //t = del (m_map);
-    //printf("add TPS[%d]\n", t);
+    t = find (m_map);
+    printf("add TPS[%d]\n", t);
+    t = del (m_map);
+    printf("add TPS[%d]\n", t);
 
 }
