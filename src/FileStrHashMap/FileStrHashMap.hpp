@@ -16,7 +16,6 @@ namespace LYW_CODE
             FileStorageHandle nextNode;
         }TMapNode_FS;
 
-        /*内存结构 用于缓存数据*/
         typedef struct _Data_MM
         {
             unsigned int dataLen;

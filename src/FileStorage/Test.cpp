@@ -1,4 +1,4 @@
-#include "FileStorage_1.hpp"
+#include "FileStorage.hpp"
 
 
 int main(int argc, char ** argv)
@@ -10,7 +10,7 @@ int main(int argc, char ** argv)
         return 0;
     }
     char buf2[100] = {0};
-    unsigned int handle = 0;
+    unsigned long handle = 0;
     int tag = atoi(argv[1]);
     int size = 0; 
     switch(tag) 
@@ -18,9 +18,9 @@ int main(int argc, char ** argv)
     case 0:
       size = atoi(argv[2]);
       handle = storage.allocate(size);
-      sprintf(buf2,"%d", handle);
+      sprintf(buf2,"%lld", handle);
       storage.write(handle, buf2, strlen(buf2));
-      printf("allocate %d\n", handle);
+      printf("allocate %lld\n", handle);
       break;
     case 1:
       memset(buf2,0x00, sizeof(buf2));
@@ -31,7 +31,7 @@ int main(int argc, char ** argv)
     case 2:
       handle = atoi(argv[2]);
       storage.Free(handle);
-      printf("free %d\n", handle) ;
+      printf("free %lld\n", handle) ;
         break;
     }
 

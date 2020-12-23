@@ -72,7 +72,7 @@ int del( LYW_CODE::FileStrHashMap & m_map)
 int main(int argc, char ** argv)
 {
     LYW_CODE::FileStrHashMap m_map;
-    m_map.Init(20);
+    m_map.Init(24);
 
     int t = 0;
     t = add (m_map);

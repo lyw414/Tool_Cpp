@@ -387,7 +387,7 @@ namespace LYW_CODE
          * @return  > 0             write data len
          *          < 0             error code
          */
-        int WriteToFile(unsigned int beginIndex, void * data, size_t lenOfData) 
+        int WriteToFile(unsigned long beginIndex, void * data, size_t lenOfData) 
         {
             if (m_Storage->lseek(beginIndex, SEEK_SET) < 0)
             {
@@ -475,7 +475,7 @@ namespace LYW_CODE
                         Free(storageBlock.blockBeginIndex);
                     }
                 }
-                return index;
+                return 1;
             }
             else
             {
