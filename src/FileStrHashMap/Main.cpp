@@ -1,14 +1,14 @@
-#include "FileStrHashMap.hpp"
+#include "FileStrHashMap_1.hpp"
 #include <sys/time.h>
 #include <string.h>
 
 
-int total = 5000000;
+int total = 1000000;
 
-int add( LYW_CODE::FileStrHashMap & m_map)
+int add( LYW_CODE::FileHashMap & m_map)
 {
     char buf[1024];
-    std::string key;
+    char key[64];
 
     struct timeval begin;
     struct timeval end;
@@ -17,8 +17,9 @@ int add( LYW_CODE::FileStrHashMap & m_map)
     gettimeofday(&begin, NULL);
     for (int iLoop = 0; iLoop < total; iLoop++)
     {
-        std::string key = "Test_data:" + std::to_string(iLoop);
-        m_map.add(key,buf,1024);
+        memset(key, 0x00, sizeof(key));
+        sprintf(key, "Test_data:%d", iLoop);
+        m_map.add(key, strlen(key), buf, 1024);
     }
     gettimeofday(&end, NULL);
 
@@ -26,10 +27,10 @@ int add( LYW_CODE::FileStrHashMap & m_map)
 }
 
 
-int find( LYW_CODE::FileStrHashMap & m_map)
+int find( LYW_CODE::FileHashMap & m_map)
 {
     char buf[1024];
-    std::string key;
+    char key[64];
 
     struct timeval begin;
     struct timeval end;
@@ -38,8 +39,9 @@ int find( LYW_CODE::FileStrHashMap & m_map)
     gettimeofday(&begin, NULL);
     for (int iLoop = 0; iLoop < total; iLoop++)
     {
-        std::string key = "Test_data:" + std::to_string(iLoop);
-        m_map.find(key,buf,1024);
+        memset(key, 0x00, sizeof(key));
+        sprintf(key, "Test_data:%d", iLoop);
+        m_map.find(key, strlen(key), buf,1024);
     }
     gettimeofday(&end, NULL);
 
@@ -47,10 +49,10 @@ int find( LYW_CODE::FileStrHashMap & m_map)
 
 }
 
-int del( LYW_CODE::FileStrHashMap & m_map)
+int del( LYW_CODE::FileHashMap & m_map)
 {
     char buf[1024];
-    std::string key;
+    char key[64];
 
     struct timeval begin;
     struct timeval end;
@@ -59,8 +61,9 @@ int del( LYW_CODE::FileStrHashMap & m_map)
     gettimeofday(&begin, NULL);
     for (int iLoop = 0; iLoop < total; iLoop++)
     {
-        std::string key = "Test_data:" + std::to_string(iLoop);
-        m_map.del(key);
+        memset(key, 0x00, sizeof(key));
+        sprintf(key, "Test_data:%d", iLoop);
+        m_map.del(key, strlen(key));
     }
     gettimeofday(&end, NULL);
 
@@ -71,9 +74,7 @@ int del( LYW_CODE::FileStrHashMap & m_map)
 
 int main(int argc, char ** argv)
 {
-    LYW_CODE::FileStrHashMap m_map;
-    m_map.Init(24);
-
+    LYW_CODE::FileHashMap m_map("HashMapFile");
     int t = 0;
     t = add (m_map);
     printf("add TPS[%d]\n", t);

@@ -56,6 +56,48 @@ namespace LYW_CODE
                 m_Storage = NULL;
             }
         }
+        int read (FileStorageHandle handle, unsigned int pos, void * buf, unsigned long len)
+        {
+            std::map<FileStorageHandle,StorageBlock_t> :: iterator it;
+            int ret = 0;
+
+            if (buf == NULL || len == 0)
+            {
+                return -3;
+            }
+            if (!IsInit())
+            {
+                return -1;
+            }
+
+            it = m_UsedBlock.find(handle);
+            
+            if (it != m_UsedBlock.end())
+            {
+                if (m_Storage->lseek(handle + sizeof(StorageBlock_t) + pos, SEEK_SET) < 0)
+                {
+                    m_Storage->close();
+                    return -2;
+                }
+
+                len = len < (it->second.lenOfData - pos) ? len : (it->second.lenOfData - pos);
+
+                if((ret = m_Storage->read(buf, len, len)) < 0)
+                {
+                    m_Storage->close();
+                    return -2;
+                }
+
+                return ret;
+            }
+            else
+            {
+                /*not found*/
+                return -2;
+            }
+        }
+
+
 
         /**
          * @brief               read data by handle
@@ -107,6 +149,50 @@ namespace LYW_CODE
                 return -2;
             }
         }
+
+        int write(FileStorageHandle handle, unsigned int pos, void * buf, unsigned long lenOfBuf)
+        {
+            int ret = 0;
+            std::map<FileStorageHandle,StorageBlock_t> :: iterator it;
+            if (!IsInit())
+            {
+                return -1;
+            }
+            
+            if (buf == NULL || lenOfBuf == 0)    
+            {
+                return -3;
+            }
+            
+            it = m_UsedBlock.find(handle);
+
+            if (it != m_UsedBlock.end())
+            {
+                if (lenOfBuf > it->second.lenOfData - pos)
+                {
+                    return -4;
+                }
+
+                if (m_Storage->lseek(handle + sizeof(StorageBlock_t) + pos, SEEK_SET) < 0)
+                {
+                    m_Storage->close();
+                    return -2;
+                }
+
+                if((ret = m_Storage->write(buf, lenOfBuf)) < 0)
+                {
+                    m_Storage->close();
+                    return -2;
+                }
+
+                return lenOfBuf;
+            }
+            else
+            {
+                return -2;
+            }
+        }
+
 
 
         int write(FileStorageHandle handle, void * buf, unsigned long lenOfBuf)
@@ -374,6 +460,13 @@ namespace LYW_CODE
             return 0;
         }
 
+        void clearFile()
+        {
+            m_Storage->close();
+            m_Storage->open(m_FileName, 1);
+            m_Storage->close();
+        }
+
     public:
 
     private:
@@ -562,4 +655,5 @@ namespace LYW_CODE
         std::map<FileStorageHandle,StorageBlock_t> m_FreeBlockEndIndex;
 
     };
-}
+}  
+#define FIRSTFILESTORAGEBLOCKHANDLE (FileStorageHandle)(sizeof(LYW_CODE::VerifyInfo_t) + sizeof(LYW_CODE::FixedHead_t))
