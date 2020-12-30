@@ -1,8 +1,8 @@
-#include "FileStrHashMap_1.hpp"
+#include "FileStrHashMap.hpp"
 #include <string.h> 
 int main(int argc, char ** argv)
 {
-    LYW_CODE::FileHashMap m_map("HashMapFile");
+    LYW_CODE::FileHashMap m_map("/usr/local/fuse/0/HashMapFile");
 
     LYW_CODE::FileHashMap::iterator it;
 

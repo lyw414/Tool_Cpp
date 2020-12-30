@@ -2,6 +2,7 @@
 #include <vector>
 #include "Thread_Msg_Queue.hpp"
 #include "Msg_Queue_IPC.hpp"
+#include "MSGQueueForProc.hpp"
 #include <sys/time.h>
 #include <unistd.h>
 
@@ -17,6 +18,7 @@ int msgID;
 
 LYW_CODE :: Thread_Msg_Queue arrayList ( 1024, 1024 );
 LYW_CODE :: Msg_Queue_IPC msg_queue ( "./IPC", 1024, 128);
+LYW_CODE :: MSGQueueForProc queue;
 int * tolNum;
 int flg = 1;
 int sleep_time;
@@ -52,6 +54,19 @@ void outDo2 ( int num )
     while ( flg == 1 )
     {
         if ( msg_queue.MSGRcv ( buf, -1 ) == 1)
+        {
+            tolNum[num]++;
+            //printf("Recv Msg\n");
+        }
+    }
+}
+
+void outDo3 ( int num )
+{
+    char buf[1024] = {0};
+    while ( flg == 1 )
+    {
+        if ( queue.recv( buf, 1024, 0) >= 0)
         {
             tolNum[num]++;
             //printf("Recv Msg\n");
@@ -109,6 +124,24 @@ void inDo2 ( int index )
     }
 }
 
+void inDo3 ( int index )
+{
+    int t = 20;
+    char buf[1024] = {0};
+    memset(buf,0x31,1024);
+    while ( flg == 1 )
+    {
+        if (queue.send(buf,1024,0) < 0  ) 
+        {
+            printf("Send Failed\n");
+            tolNum[index]--;
+        }
+        std::this_thread::sleep_for ( std::chrono::microseconds( sleep_time ) );
+    }
+}
+
+
+
 
 bool creat_msg_queue ()
 {
@@ -128,7 +161,8 @@ int main ( int argc, char * argv[] )
     struct timeval v2;
     int zz = InThreadNum  > OutThreadNum ? InThreadNum : OutThreadNum;
 
-    creat_msg_queue ();
+    //creat_msg_queue ();
+    queue.open(2, 1024, 1024);
     
     tolNum = (int *)malloc ( sizeof ( int ) * zz);
     memset ( tolNum,0x00,  sizeof ( int ) * zz);
@@ -138,12 +172,12 @@ int main ( int argc, char * argv[] )
     
     for ( int iLoop = 0; iLoop < OutThreadNum; iLoop++ )
     {
-        ThreadArray_out.push_back ( std::thread ( outDo2,iLoop ) );
+        ThreadArray_out.push_back ( std::thread ( outDo3,iLoop ) );
     }
 
     for ( int iLoop = 0; iLoop < InThreadNum; iLoop++ )
     {
-        ThreadArray_in.push_back ( std::thread ( inDo2,iLoop ) );
+        ThreadArray_in.push_back ( std::thread ( inDo3,iLoop ) );
     }
     
     while ( 1 )
